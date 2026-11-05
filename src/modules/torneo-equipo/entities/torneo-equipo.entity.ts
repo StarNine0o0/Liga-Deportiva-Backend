@@ -11,14 +11,13 @@ import { Torneo } from '../../torneos/entities/torneo.entity.js';
 
 @Entity('torneo_equipo')
 export class TorneoEquipo {
+
   @PrimaryGeneratedColumn()
   id: number;
 
-  /**
-   * FK hacia tabla `torneos` del Desarrollador 2.
-   * ⚠️ RECORDATORIO: Cambiar el nombre de esta columna si tu compañero
-   *    usa un nombre diferente para la PK de la tabla torneos.
-   */
+  @ManyToOne(() => Torneo)
+  torneo: Relation<Torneo>;
+
   @Column()
   torneoId: number;
   
