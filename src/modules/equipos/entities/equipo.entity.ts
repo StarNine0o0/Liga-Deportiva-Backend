@@ -7,7 +7,7 @@ import {
   type Relation,
 } from 'typeorm';
 import { Usuario } from '../../usuarios/entities/usuario.entity.js';
-// import { Sede } from '../../sedes/entities/sede.entity.js'; // TODO: Descomentar cuando Dev2 agregue la entidad Sede
+import { Sede } from '../../sedes/entities/sede.entity.js';
 
 @Entity('equipos')
 export class Equipo {
@@ -26,16 +26,11 @@ export class Equipo {
   @Column()
   capitanId: number;
 
-  /**
-   * FK hacia tabla `sedes` del Desarrollador 2.
-   * ⚠️ RECORDATORIO: Cambiar el nombre de esta columna si tu compañero
-   *    usa un nombre diferente para la PK de la tabla sedes.
-   */
   @Column({ nullable: true })
   sedeId: number;
-  // TODO: Descomentar cuando Dev2 agregue la entidad Sede
-  // @ManyToOne(() => Sede)
-  // sede: Sede;
+
+  @ManyToOne(() => Sede, { nullable: true })
+  sede: Relation<Sede>;
 
   @Column({ type: 'varchar', length: 255, nullable: true })
   logoUrl: string;

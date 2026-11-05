@@ -46,14 +46,14 @@ export class EquiposService {
 
   async findAll(): Promise<Equipo[]> {
     return this.equipoRepository.find({
-      relations: { capitan: true },
+      relations: { capitan: true, sede: true },
     });
   }
 
   async findOne(id: number): Promise<Equipo> {
     const equipo = await this.equipoRepository.findOne({
       where: { id },
-      relations: { capitan: true },
+      relations: { capitan: true, sede: true },
     });
     if (!equipo) {
       throw new NotFoundException(`Equipo con ID ${id} no encontrado`);

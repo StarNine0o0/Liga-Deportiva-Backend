@@ -24,6 +24,8 @@ import { SeedModule } from './common/seeds/seed.module.js';
 import { JwtAuthGuard } from './modules/auth/guards/jwt-auth.guard.js';
 import { RolesGuard } from './modules/auth/guards/roles.guard.js';
 
+import { SedesModule } from './modules/sedes/sedes.module.js';
+
 @Module({
   imports: [
     // Configuración global (.env)
@@ -48,8 +50,7 @@ import { RolesGuard } from './modules/auth/guards/roles.guard.js';
     AlineacionesModule,
     GolesModule,
     PosicionesModule,
-
-    // Seeds (datos iniciales)
+    SedesModule,
     SeedModule,
   ],
   controllers: [AppController],
