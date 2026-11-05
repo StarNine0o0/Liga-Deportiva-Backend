@@ -24,6 +24,14 @@ import { SeedModule } from './common/seeds/seed.module.js';
 import { JwtAuthGuard } from './modules/auth/guards/jwt-auth.guard.js';
 import { RolesGuard } from './modules/auth/guards/roles.guard.js';
 
+import { SedesModule } from './modules/sedes/sedes.module.js';
+import { JornadasModule } from './modules/jornadas/jornadas.module.js';
+import { PartidosModule } from './modules/partidos/partidos.module.js';
+import { TarjetasModule } from './modules/tarjetas/tarjetas.module.js';
+import { TemporadasModule } from './modules/temporadas/temporadas.module.js';
+import { JugadoresModule } from './modules/jugadores/jugadores.module.js';
+import { TorneosModule } from './modules/torneos/torneos.module.js';
+
 @Module({
   imports: [
     // Configuración global (.env)
@@ -48,9 +56,14 @@ import { RolesGuard } from './modules/auth/guards/roles.guard.js';
     AlineacionesModule,
     GolesModule,
     PosicionesModule,
-
-    // Seeds (datos iniciales)
+    SedesModule,
     SeedModule,
+    JornadasModule,
+    PartidosModule,
+    TarjetasModule,
+    TemporadasModule,
+    JugadoresModule,
+    TorneosModule,
   ],
   controllers: [AppController],
   providers: [

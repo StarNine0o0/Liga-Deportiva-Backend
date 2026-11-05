@@ -6,36 +6,26 @@ import {
   type Relation,
 } from 'typeorm';
 import { Equipo } from '../../equipos/entities/equipo.entity.js';
-// import { Partido } from '../../partidos/entities/partido.entity.js'; // TODO: Descomentar cuando Dev2 agregue la entidad Partido
-// import { Jugador } from '../../jugadores/entities/jugador.entity.js'; // TODO: Descomentar cuando Dev2 agregue la entidad Jugador
+import { Jugador } from '../../jugadores/entities/jugadores.entity.js';
+import { Partido } from '../../partidos/entities/partido.entity.js';
 
 @Entity('goles')
 export class Gol {
   @PrimaryGeneratedColumn()
   id: number;
 
-  /**
-   * FK hacia tabla `partidos` del Desarrollador 2.
-   * ⚠️ RECORDATORIO: Cambiar el nombre de esta columna si tu compañero
-   *    usa un nombre diferente para la PK de la tabla partidos.
-   */
+    @ManyToOne(() => Partido)
+  partido: Relation<Partido>;
+
   @Column()
   partidoId: number;
-  // TODO: Descomentar cuando Dev2 agregue la entidad Partido
-  // @ManyToOne(() => Partido)
-  // partido: Relation<Partido>;
 
-  /**
-   * FK hacia tabla `jugadores` del Desarrollador 2.
-   * ⚠️ RECORDATORIO: Cambiar el nombre de esta columna si tu compañero
-   *    usa un nombre diferente para la PK de la tabla jugadores.
-   */
+  @ManyToOne(() => Jugador)
+  jugador: Relation<Jugador>;
+
   @Column()
   jugadorId: number;
-  // TODO: Descomentar cuando Dev2 agregue la entidad Jugador
-  // @ManyToOne(() => Jugador)
-  // jugador: Relation<Jugador>;
-
+  
   @ManyToOne(() => Equipo)
   equipo: Relation<Equipo>;
 
