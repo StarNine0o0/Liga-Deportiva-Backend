@@ -16,7 +16,7 @@ export class TorneoEquipo {
 
   /**
    * FK hacia tabla `torneos` del Desarrollador 2.
-   * ⚠️ RECORDATORIO: Cambiar el nombre de esta columna si tu compañero
+   *  RECORDATORIO: Cambiar el nombre de esta columna si tu compañero
    *    usa un nombre diferente para la PK de la tabla torneos.
    */
   @Column()

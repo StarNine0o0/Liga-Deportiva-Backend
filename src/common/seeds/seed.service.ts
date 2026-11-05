@@ -37,7 +37,7 @@ export class SeedService implements OnModuleInit {
         await this.rolRepository.save(
           this.rolRepository.create({ nombre }),
         );
-        this.logger.log(`✅ Rol "${nombre}" creado`);
+        this.logger.log(`Rol "${nombre}" creado`);
       }
     }
   }
@@ -71,7 +71,7 @@ export class SeedService implements OnModuleInit {
           }),
         );
         this.logger.log(
-          `✅ Usuario admin creado (email: ${adminEmail}, password: admin123)`,
+          ` Usuario admin creado (email: ${adminEmail}, password: admin123)`,
         );
       }
     }
