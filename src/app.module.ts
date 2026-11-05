@@ -25,6 +25,12 @@ import { JwtAuthGuard } from './modules/auth/guards/jwt-auth.guard.js';
 import { RolesGuard } from './modules/auth/guards/roles.guard.js';
 
 import { SedesModule } from './modules/sedes/sedes.module.js';
+import { JornadasModule } from './modules/jornadas/jornadas.module.js';
+import { PartidosModule } from './modules/partidos/partidos.module.js';
+import { TarjetasModule } from './modules/tarjetas/tarjetas.module.js';
+import { TemporadasModule } from './modules/temporadas/temporadas.module.js';
+import { JugadoresModule } from './modules/jugadores/jugadores.module.js';
+import { TorneosModule } from './modules/torneos/torneos.module.js';
 
 @Module({
   imports: [
@@ -52,6 +58,12 @@ import { SedesModule } from './modules/sedes/sedes.module.js';
     PosicionesModule,
     SedesModule,
     SeedModule,
+    JornadasModule,
+    PartidosModule,
+    TarjetasModule,
+    TemporadasModule,
+    JugadoresModule,
+    TorneosModule,
   ],
   controllers: [AppController],
   providers: [
