@@ -45,6 +45,10 @@ export class Jugador {
   @Column()
   equipoId: number;
 
+    /** Nombre del archivo de la foto (la imagen se sirve por GET /jugadores/:id/foto) */
+  @Column({ type: 'varchar', length: 255, nullable: true })
+  fotoArchivo: string | null;
+
   @CreateDateColumn()
   createdAt: Date;
 }
