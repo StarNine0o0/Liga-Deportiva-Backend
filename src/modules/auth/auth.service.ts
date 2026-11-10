@@ -1,5 +1,6 @@
 import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
+import { ConfigService } from '@nestjs/config';
 import * as bcrypt from 'bcrypt';
 import { UsuariosService } from '../usuarios/usuarios.service.js';
 import { LoginDto } from './dto/login.dto.js';
@@ -10,6 +11,7 @@ export class AuthService {
   constructor(
     private readonly usuariosService: UsuariosService,
     private readonly jwtService: JwtService,
+    private readonly configService: ConfigService, //Para usar variables de entorno. si no existe la variable, lance error.
   ) {}
 
   async login(loginDto: LoginDto) {
@@ -37,8 +39,10 @@ export class AuthService {
       rol: usuario.rol?.nombre ?? 'sin_rol',
     };
 
+    const secret = this.configService.get<string>('JWT_SECRET'); // traemos la constante de JWT_SECRET  de .env para el logeo correcto 
+
     return {
-      access_token: this.jwtService.sign(payload),
+      access_token: this.jwtService.sign(payload, {secret}),
       usuario: {
         id: usuario.id,
         nombre: usuario.nombre,
