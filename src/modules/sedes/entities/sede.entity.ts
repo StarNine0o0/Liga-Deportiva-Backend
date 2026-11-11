@@ -3,7 +3,10 @@ import {
   PrimaryGeneratedColumn,
   Column,
   CreateDateColumn,
+  OneToMany,
+  type Relation,
 } from 'typeorm';
+import { SedeImagen } from './sede-imagen.entity.js';
 
 @Entity('sedes')
 export class Sede {
@@ -21,6 +24,9 @@ export class Sede {
 
   @Column({ type: 'int', nullable: true })
   capacidad: number;
+
+  @OneToMany(() => SedeImagen, (img) => img.sede, { cascade: true })
+  imagenes: Relation<SedeImagen>[];
 
   @CreateDateColumn()
   createdAt: Date;

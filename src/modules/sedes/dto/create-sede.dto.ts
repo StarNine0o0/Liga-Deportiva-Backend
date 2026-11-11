@@ -32,4 +32,6 @@ export class CreateSedeDto {
   @Min(1)
   @IsOptional()
   capacidad?: number;
+
+  
 }
