@@ -9,6 +9,7 @@ import { Torneo } from './entities/torneo.entity.js';
 import { CreateTorneoDto } from './dto/create-torneo.dto.js';
 import { UpdateTorneoDto } from './dto/update-torneo.dto.js';
 import { TemporadasService } from '../temporadas/temporadas.service.js';
+import { Temporada } from '../temporadas/entities/temporada.entity.js';
 
 @Injectable()
 export class TorneosService {
@@ -49,12 +50,14 @@ export class TorneosService {
     return torneo;
   }
 
-  async update(id: number, dto: UpdateTorneoDto): Promise<Torneo> {
+ async update(id: number, dto: UpdateTorneoDto): Promise<Torneo> {
     const torneo = await this.findOne(id);
 
-    if (dto.temporadaId) {
-      await this.temporadasService.findOne(dto.temporadaId);
-    }
+    const temporadaId = dto.temporadaId ?? torneo.temporadaId;
+    const temporada =
+      dto.temporadaId && dto.temporadaId !== torneo.temporadaId
+        ? await this.temporadasService.findOne(dto.temporadaId)
+        : torneo.temporada ?? (await this.temporadasService.findOne(temporadaId));
 
     const inicio = dto.fechaInicio ?? torneo.fechaInicio;
     const fin = dto.fechaFin ?? torneo.fechaFin;
@@ -64,6 +67,8 @@ export class TorneosService {
       );
     }
 
+    this.validarFechasEnTemporada(inicio, fin, temporada);
+
     Object.assign(torneo, dto);
     return this.torneoRepository.save(torneo);
   }
@@ -72,4 +77,41 @@ export class TorneosService {
     const torneo = await this.findOne(id);
     await this.torneoRepository.remove(torneo);
   }
+  //normaliza las fechas para que se puedan comparar
+  private normalizarFecha(valor: string | Date): string {
+    if (valor instanceof Date) {
+      return valor.toISOString().split('T')[0];
+    }
+    return String(valor).split('T')[0];
+  }
+
+  private validarFechasEnTemporada(
+    fechaInicio: string | Date,
+    fechaFin: string | Date,
+    temporada: Temporada,
+  ) {
+    const fInicioTorneo = this.normalizarFecha(fechaInicio);
+    const fFinTorneo = this.normalizarFecha(fechaFin);
+    const fInicioTemp = temporada.fechaInicio
+      ? this.normalizarFecha(temporada.fechaInicio)
+      : null;
+    const fFinTemp = temporada.fechaFin
+      ? this.normalizarFecha(temporada.fechaFin)
+      : null;
+
+    if (fInicioTemp && fInicioTorneo < fInicioTemp) {
+      throw new BadRequestException(
+        `La fecha de inicio del torneo (${fInicioTorneo}) no puede ser anterior al inicio de la temporada (${fInicioTemp})`,
+      );
+    }
+
+    if (fFinTemp && fFinTorneo > fFinTemp) {
+      throw new BadRequestException(
+        `La fecha de fin del torneo (${fFinTorneo}) no puede ser posterior al fin de la temporada (${fFinTemp})`,
+      );
+    }
+  }
+
+
+
 }

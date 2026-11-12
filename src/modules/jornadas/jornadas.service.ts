@@ -9,6 +9,8 @@ import { Jornada } from './entities/jornada.entity.js';
 import { CreateJornadaDto } from './dto/create-jornada.dto.js';
 import { UpdateJornadaDto } from './dto/update-jornada.dto.js';
 import { TorneosService } from '../torneos/torneos.service.js';
+import { Torneo } from '../torneos/entities/torneo.entity.js';
+import { BadRequestException } from '@nestjs/common';
 
 @Injectable()
 export class JornadasService {
@@ -49,17 +51,26 @@ export class JornadasService {
     return jornada;
   }
 
-  async update(id: number, dto: UpdateJornadaDto): Promise<Jornada> {
+ async update(id: number, dto: UpdateJornadaDto): Promise<Jornada> {
     const jornada = await this.findOne(id);
 
-    if (dto.torneoId) {
-      await this.torneosService.findOne(dto.torneoId);
-    }
-
     const torneoId = dto.torneoId ?? jornada.torneoId;
+    const torneo =
+      dto.torneoId && dto.torneoId !== jornada.torneoId
+        ? await this.torneosService.findOne(dto.torneoId)
+        : jornada.torneo ?? (await this.torneosService.findOne(torneoId));
+
     const numero = dto.numero ?? jornada.numero;
     if (torneoId !== jornada.torneoId || numero !== jornada.numero) {
       await this.verificarNumero(torneoId, numero);
+    }
+
+    // Evaluamos la fecha resultante (si viene nueva en dto, o la que ya tenía si cambió de torneo)
+    const fechaFinal =
+      dto.fecha !== undefined ? dto.fecha : (jornada.fecha as unknown as string | null);
+
+    if (fechaFinal) {
+      this.validarFechaEnTorneo(fechaFinal, torneo);
     }
 
     Object.assign(jornada, dto);
@@ -78,6 +89,32 @@ export class JornadasService {
     if (existe) {
       throw new ConflictException(
         `La jornada ${numero} ya existe en ese torneo`,
+      );
+    }
+  }
+
+//Normaliza a YYYY-MM-DD para comparar fechas calendario sin desfase horario
+  private normalizarFecha(valor: string | Date): string {
+    if (valor instanceof Date) {
+      return valor.toISOString().split('T')[0];
+    }
+    return String(valor).split('T')[0];
+  }
+
+  private validarFechaEnTorneo(fechaJornada: string | Date, torneo: Torneo) {
+    const fJornada = this.normalizarFecha(fechaJornada);
+    const fInicio = torneo.fechaInicio ? this.normalizarFecha(torneo.fechaInicio) : null;
+    const fFin = torneo.fechaFin ? this.normalizarFecha(torneo.fechaFin) : null;
+
+    if (fInicio && fJornada < fInicio) {
+      throw new BadRequestException(
+        `La fecha de la jornada (${fJornada}) no puede ser anterior al inicio del torneo (${fInicio})`,
+      );
+    }
+
+    if (fFin && fJornada > fFin) {
+      throw new BadRequestException(
+        `La fecha de la jornada (${fJornada}) no puede ser posterior al fin del torneo (${fFin})`,
       );
     }
   }
