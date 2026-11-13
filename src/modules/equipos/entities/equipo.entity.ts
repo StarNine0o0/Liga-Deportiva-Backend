@@ -27,7 +27,8 @@ export class Equipo {
   capitanId: number;
 
   @Column({ nullable: true })
-  sedeId: number;
+  sedeId: number | null;
+
 
   @ManyToOne(() => Sede, { nullable: true })
   sede: Relation<Sede>;

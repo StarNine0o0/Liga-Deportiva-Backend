@@ -61,15 +61,23 @@ export class EquiposService {
     return equipo;
   }
 
-  async update(
+ async update(
     id: number,
     updateEquipoDto: UpdateEquipoDto,
   ): Promise<Equipo> {
     const equipo = await this.findOne(id);
 
-    // Si cambia el capitán, verificar que existe
-    if (updateEquipoDto.capitanId) {
+    // Si cambia el capitán, verificar que existe y limpiar la relación cargada en memoria
+    if (updateEquipoDto.capitanId !== undefined) {
       await this.usuariosService.findOne(updateEquipoDto.capitanId);
+      equipo.capitan = undefined as any;
+      equipo.capitanId = updateEquipoDto.capitanId;
+    }
+
+    // Si cambia o se limpia la sede, actualizar tanto la relación como el ID
+    if (updateEquipoDto.sedeId !== undefined) {
+      equipo.sede = null as any;
+      equipo.sedeId = updateEquipoDto.sedeId as any;
     }
 
     // Si cambia el nombre, verificar duplicado
@@ -85,7 +93,10 @@ export class EquiposService {
     }
 
     Object.assign(equipo, updateEquipoDto);
-    return this.equipoRepository.save(equipo);
+    await this.equipoRepository.save(equipo);
+
+    // Retornamos findOne(id) para devolver las relaciones (capitan y sede) actualizadas
+    return this.findOne(id);
   }
 
   async remove(id: number): Promise<void> {

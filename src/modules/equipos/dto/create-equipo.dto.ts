@@ -4,6 +4,7 @@ import {
   IsOptional,
   IsString,
   MaxLength,
+  ValidateIf,
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
@@ -26,11 +27,12 @@ export class CreateEquipoDto {
 
   @ApiPropertyOptional({
     example: 1,
-    description: 'ID de la sede (tabla del Dev2)',
+    description: 'ID de la sede ',
   })
+ @ValidateIf((_, value) => value !== null && value !== undefined)
   @IsNumber()
   @IsOptional()
-  sedeId?: number;
+  sedeId?: number | null;;
 
   @ApiPropertyOptional({ example: 'https://example.com/logo.png' })
   @IsString()
