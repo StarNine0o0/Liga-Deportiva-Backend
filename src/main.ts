@@ -1,11 +1,13 @@
+import { join } from 'path';
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
+import { NestExpressApplication } from '@nestjs/platform-express';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { AppModule } from './app.module.js';
 import { DatabaseExceptionFilter } from './common/filters/http-exception.filter.js';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create<NestExpressApplication>(AppModule);
 
   // Prefijo global para todas las rutas: /api/...
   app.setGlobalPrefix('api');
@@ -24,6 +26,16 @@ async function bootstrap() {
 
   // Filtro global de excepciones HTTP
   app.useGlobalFilters(new DatabaseExceptionFilter());
+
+  app.useStaticAssets(join(process.cwd(), 'uploads'), {
+    prefix: '/uploads/',
+    setHeaders: (res) => {
+      res.setHeader('Access-Control-Allow-Origin', '*');
+      res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+    },
+  });
+  
+  
 
   // Swagger (documentación de la API)
   const config = new DocumentBuilder()
