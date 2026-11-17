@@ -11,6 +11,9 @@ import { UpdatePartidoDto } from './dto/update-partido.dto.js';
 import { JornadasService } from '../jornadas/jornadas.service.js';
 import { EquiposService } from '../equipos/equipos.service.js';
 import { SedesService } from '../sedes/sedes.service.js';
+import { JugadoresService } from '../jugadores/jugadores.service.js';
+
+export const MIN_JUGADORES_POR_EQUIPO = 9;
 
 @Injectable()
 export class PartidosService {
@@ -20,7 +23,21 @@ export class PartidosService {
     private readonly jornadasService: JornadasService,
     private readonly equiposService: EquiposService,
     private readonly sedesService: SedesService,
+    private readonly jugadoresService: JugadoresService,
   ) {}
+
+  /** Cada equipo debe tener mínimo 9 jugadores registrados para poder jugar */
+  private async validarJugadoresMinimos(equipoIds: number[]): Promise<void> {
+    for (const equipoId of equipoIds) {
+      const total = await this.jugadoresService.countByEquipo(equipoId);
+      if (total < MIN_JUGADORES_POR_EQUIPO) {
+        const equipo = await this.equiposService.findOne(equipoId);
+        throw new BadRequestException(
+          `El equipo "${equipo.nombre}" tiene ${total} jugador(es) registrados y necesita mínimo ${MIN_JUGADORES_POR_EQUIPO} para jugar`,
+        );
+      }
+    }
+  }
 
   async create(dto: CreatePartidoDto): Promise<Partido> {
     if (dto.equipoLocalId === dto.equipoVisitanteId) {
@@ -35,6 +52,11 @@ export class PartidosService {
     if (dto.sedeId) {
       await this.sedesService.findOne(dto.sedeId);
     }
+
+    await this.validarJugadoresMinimos([
+      dto.equipoLocalId,
+      dto.equipoVisitanteId,
+    ]);
 
     const partido = this.partidoRepository.create(dto);
     return this.partidoRepository.save(partido);
@@ -77,6 +99,7 @@ export class PartidosService {
 
   async update(id: number, dto: UpdatePartidoDto): Promise<Partido> {
     const partido = await this.findOne(id);
+    if (Object.keys(dto).length === 0) return partido;
 
     const local = dto.equipoLocalId ?? partido.equipoLocalId;
     const visitante = dto.equipoVisitanteId ?? partido.equipoVisitanteId;
@@ -93,8 +116,24 @@ export class PartidosService {
     }
     if (dto.sedeId) await this.sedesService.findOne(dto.sedeId);
 
-    Object.assign(partido, dto);
-    return this.partidoRepository.save(partido);
+    // Se revalida si cambian los equipos o si el partido está por iniciar
+    const cambiaEquipos =
+      local !== partido.equipoLocalId ||
+      visitante !== partido.equipoVisitanteId;
+    const iniciando =
+      dto.estado === 'EN_JUEGO' && partido.estado !== 'EN_JUEGO';
+    if (cambiaEquipos || iniciando) {
+      await this.validarJugadoresMinimos([local, visitante]);
+    }
+
+    // update() en vez de assign + save: con las relaciones cargadas, TypeORM
+    // podía ignorar el equipoLocalId / equipoVisitanteId nuevo
+    const { fechaHora, ...resto } = dto;
+    await this.partidoRepository.update(id, {
+      ...resto,
+      ...(fechaHora ? { fechaHora: new Date(fechaHora) } : {}),
+    });
+    return this.findOne(id);
   }
 
   async remove(id: number): Promise<void> {

@@ -2,6 +2,7 @@ import {
   Injectable,
   NotFoundException,
   ConflictException,
+  BadRequestException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
@@ -11,6 +12,9 @@ import { CreateSedeDto } from './dto/create-sede.dto.js';
 import { UpdateSedeDto } from './dto/update-sede.dto.js';
 import { ImageStorageService } from '../../common/uploads/image-storage.service.js';
 import type { ArchivoSubido } from '../../common/uploads/image-storage.service.js';
+
+
+export const MAX_IMAGENES_SEDE = 3;
 
 /** Forma con la que el frontend recibe cada imagen */
 export interface SedeImagenDto {
@@ -118,6 +122,12 @@ export class SedesService {
     });
     if (!sede) {
       throw new NotFoundException(`Sede con ID ${sedeId} no encontrada`);
+    }
+
+    if (sede.imagenes && sede.imagenes.length >= MAX_IMAGENES_SEDE) {
+      throw new BadRequestException(
+        `La sede ${sede.nombre} ya tiene el máximo de ${MAX_IMAGENES_SEDE} imágenes`,
+      );
     }
 
     const archivo = await this.images.save('sedes', file);

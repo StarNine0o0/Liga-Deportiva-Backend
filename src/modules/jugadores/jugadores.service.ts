@@ -29,6 +29,11 @@ export class JugadoresService {
 
     const jugador = this.jugadorRepository.create(dto);
     return this.jugadorRepository.save(jugador);
+    
+  }
+
+  async countByEquipo(equipoId: number): Promise<number> {
+    return this.jugadorRepository.count({ where: { equipoId } });
   }
 
   async findAll(): Promise<Jugador[]> {
