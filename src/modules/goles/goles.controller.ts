@@ -7,11 +7,16 @@ import {
   Param,
   Delete,
   ParseIntPipe,
+  Req,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { GolesService } from './goles.service.js';
 import { CreateGolDto } from './dto/create-gol.dto.js';
 import { UpdateGolDto } from './dto/update-gol.dto.js';
+import { Roles } from '../auth/decorators/roles.decorator.js';
+import type { UserJwt } from '../auth/permisos.helper.js';
+
+type Peticion = { user: UserJwt };
 
 @ApiTags('Goles')
 @ApiBearerAuth()
@@ -20,9 +25,10 @@ export class GolesController {
   constructor(private readonly golesService: GolesService) {}
 
   @Post()
+  @Roles('admin', 'arbitro')
   @ApiOperation({ summary: 'Registrar un gol' })
-  create(@Body() createGolDto: CreateGolDto) {
-    return this.golesService.create(createGolDto);
+  create(@Body() createGolDto: CreateGolDto, @Req() req: Peticion) {
+    return this.golesService.create(createGolDto, req.user);
   }
 
   @Get()
@@ -44,18 +50,20 @@ export class GolesController {
   }
 
   @Patch(':id')
+  @Roles('admin', 'arbitro')
   @ApiOperation({ summary: 'Actualizar un gol' })
   update(
     @Param('id', ParseIntPipe) id: number,
     @Body() updateGolDto: UpdateGolDto,
+    @Req() req: Peticion,
   ) {
-    return this.golesService.update(id, updateGolDto);
+    return this.golesService.update(id, updateGolDto, req.user);
   }
 
   @Delete(':id')
+  @Roles('admin', 'arbitro')
   @ApiOperation({ summary: 'Eliminar un gol' })
-  remove(@Param('id', ParseIntPipe) id: number) {
-    return this.golesService.remove(id);
+  remove(@Param('id', ParseIntPipe) id: number, @Req() req: Peticion) {
+    return this.golesService.remove(id, req.user);
   }
 }
-

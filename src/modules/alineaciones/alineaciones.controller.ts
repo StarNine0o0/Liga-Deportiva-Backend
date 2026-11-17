@@ -1,3 +1,4 @@
+import { AdminEscribe } from '../auth/decorators/roles.decorator.js';
 import {
   Controller,
   Get,
@@ -15,6 +16,7 @@ import { UpdateAlineacionDto } from './dto/update-alineacion.dto.js';
 
 @ApiTags('Alineaciones')
 @ApiBearerAuth()
+@AdminEscribe()
 @Controller('alineaciones')
 export class AlineacionesController {
   constructor(private readonly alineacionesService: AlineacionesService) {}

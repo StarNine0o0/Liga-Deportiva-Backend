@@ -5,6 +5,8 @@ import { Gol } from './entities/gol.entity.js';
 import { CreateGolDto } from './dto/create-gol.dto.js';
 import { UpdateGolDto } from './dto/update-gol.dto.js';
 import { EquiposService } from '../equipos/equipos.service.js';
+import { PartidosService } from '../partidos/partidos.service.js';
+import { UserJwt, verificarArbitro } from '../auth/permisos.helper.js';
 
 @Injectable()
 export class GolesService {
@@ -12,9 +14,19 @@ export class GolesService {
     @InjectRepository(Gol)
     private readonly golRepository: Repository<Gol>,
     private readonly equiposService: EquiposService,
+    private readonly partidosService: PartidosService,
   ) {}
 
-  async create(createGolDto: CreateGolDto): Promise<Gol> {
+  /** Si viene un usuario, el árbitro solo puede operar en sus partidos */
+  private async verificarPartido(partidoId: number, user?: UserJwt) {
+    if (!user) return;
+    const partido = await this.partidosService.findOne(partidoId);
+    verificarArbitro(user, partido.arbitroId ?? -1);
+  }
+
+  async create(createGolDto: CreateGolDto, user?: UserJwt): Promise<Gol> {
+    await this.verificarPartido(createGolDto.partidoId, user);
+
     // Verificar que el equipo existe
     await this.equiposService.findOne(createGolDto.equipoId);
 
@@ -46,8 +58,17 @@ export class GolesService {
     });
   }
 
-  async update(id: number, updateGolDto: UpdateGolDto): Promise<Gol> {
+  async update(
+    id: number,
+    updateGolDto: UpdateGolDto,
+    user?: UserJwt,
+  ): Promise<Gol> {
     const gol = await this.findOne(id);
+
+    await this.verificarPartido(gol.partidoId, user);
+    if (updateGolDto.partidoId) {
+      await this.verificarPartido(updateGolDto.partidoId, user);
+    }
 
     if (updateGolDto.equipoId) {
       await this.equiposService.findOne(updateGolDto.equipoId);
@@ -57,9 +78,9 @@ export class GolesService {
     return this.golRepository.save(gol);
   }
 
-  async remove(id: number): Promise<void> {
+  async remove(id: number, user?: UserJwt): Promise<void> {
     const gol = await this.findOne(id);
+    await this.verificarPartido(gol.partidoId, user);
     await this.golRepository.remove(gol);
   }
 }
-

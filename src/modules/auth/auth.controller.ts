@@ -16,6 +16,13 @@ export class AuthController {
     return this.authService.login(loginDto);
   }
 
+  @Public()
+  @Post('invitado')
+  @ApiOperation({ summary: 'Entrar como invitado (solo lectura)' })
+  invitado() {
+    return this.authService.invitado();
+  }
+
   @Get('profile')
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Obtener perfil del usuario autenticado' })
@@ -23,4 +30,3 @@ export class AuthController {
     return this.authService.getProfile(req.user.id);
   }
 }
-

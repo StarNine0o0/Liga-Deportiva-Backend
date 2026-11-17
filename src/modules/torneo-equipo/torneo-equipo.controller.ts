@@ -1,3 +1,4 @@
+import { Roles } from '../auth/decorators/roles.decorator.js';
 import {
   Controller,
   Get,
@@ -15,6 +16,7 @@ import { UpdateTorneoEquipoDto } from './dto/update-torneo-equipo.dto.js';
 
 @ApiTags('Torneo-Equipo')
 @ApiBearerAuth()
+@Roles('admin')
 @Controller('torneo-equipo')
 export class TorneoEquipoController {
   constructor(private readonly torneoEquipoService: TorneoEquipoService) {}

@@ -9,6 +9,7 @@ import {
 import { Jornada } from '../../jornadas/entities/jornada.entity.js';
 import { Equipo } from '../../equipos/entities/equipo.entity.js';
 import { Sede } from '../../sedes/entities/sede.entity.js';
+import { Usuario } from '../../usuarios/entities/usuario.entity.js';
 
 export type EstadoPartido =
   | 'PROGRAMADO'
@@ -44,6 +45,13 @@ export class Partido {
 
   @Column({ nullable: true })
   sedeId: number;
+
+  // Árbitro asignado (usuario con rol 'arbitro')
+  @ManyToOne(() => Usuario, { nullable: true, onDelete: 'SET NULL' })
+  arbitro: Relation<Usuario> | null;
+
+  @Column({ type: 'int', nullable: true })
+  arbitroId: number | null;
 
   @Column({ type: 'datetime' })
   fechaHora: Date;

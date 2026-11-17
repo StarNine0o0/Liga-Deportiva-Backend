@@ -1,12 +1,14 @@
 import {
   IsEmail,
+  IsInt,
   IsNotEmpty,
   IsNumber,
+  IsOptional,
   IsString,
   MaxLength,
   MinLength,
 } from 'class-validator';
-import { ApiProperty } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class CreateUsuarioDto {
   @ApiProperty({ example: 'Juan Pérez' })
@@ -28,5 +30,12 @@ export class CreateUsuarioDto {
   @ApiProperty({ example: 1, description: 'ID del rol asignado' })
   @IsNumber()
   rolId: number;
-}
 
+  @ApiPropertyOptional({
+    example: 3,
+    description: 'ID del equipo (obligatorio para capitán y entrenador)',
+  })
+  @IsOptional()
+  @IsInt()
+  equipoId?: number;
+}

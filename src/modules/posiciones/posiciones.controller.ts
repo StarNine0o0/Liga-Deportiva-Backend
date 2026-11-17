@@ -1,3 +1,4 @@
+import { AdminEscribe } from '../auth/decorators/roles.decorator.js';
 import {
   Controller,
   Get,
@@ -15,6 +16,7 @@ import { UpdatePosicionDto } from './dto/update-posicion.dto.js';
 
 @ApiTags('Posiciones')
 @ApiBearerAuth()
+@AdminEscribe()
 @Controller('posiciones')
 export class PosicionesController {
   constructor(private readonly posicionesService: PosicionesService) {}

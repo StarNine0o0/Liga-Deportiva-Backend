@@ -1,3 +1,4 @@
+import { Roles } from '../auth/decorators/roles.decorator.js';
 import {
   Controller,
   Get,
@@ -15,6 +16,7 @@ import { UpdateRolDto } from './dto/update-rol.dto.js';
 
 @ApiTags('Roles')
 @ApiBearerAuth()
+@Roles('admin')
 @Controller('roles')
 export class RolesController {
   constructor(private readonly rolesService: RolesService) {}

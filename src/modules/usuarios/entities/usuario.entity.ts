@@ -8,6 +8,7 @@ import {
   type Relation,
 } from 'typeorm';
 import { Rol } from '../../roles/entities/rol.entity.js';
+import { Equipo } from '../../equipos/entities/equipo.entity.js'; // AJUSTA la ruta
 
 @Entity('usuarios')
 export class Usuario {
@@ -29,6 +30,13 @@ export class Usuario {
   @Column()
   rolId: number;
 
+  // Solo para capitán / entrenador
+  @ManyToOne(() => Equipo, { nullable: true, onDelete: 'SET NULL' })
+  equipo: Relation<Equipo> | null;
+
+  @Column({ type: 'int', nullable: true })
+  equipoId: number | null;
+
   @Column({ type: 'boolean', default: true })
   activo: boolean;
 
@@ -38,4 +46,3 @@ export class Usuario {
   @UpdateDateColumn()
   updatedAt: Date;
 }
-

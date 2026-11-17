@@ -11,6 +11,7 @@ import { Usuario } from './entities/usuario.entity.js';
 import { CreateUsuarioDto } from './dto/create-usuario.dto.js';
 import { UpdateUsuarioDto } from './dto/update-usuario.dto.js';
 import { RolesService } from '../roles/roles.service.js';
+import { Rol } from '../auth/roles.enum.js';
 
 @Injectable()
 export class UsuariosService {
@@ -20,6 +21,17 @@ export class UsuariosService {
     private readonly rolesService: RolesService,
   ) {}
 
+  /** Capitán y entrenador deben pertenecer a un equipo */
+  private validarEquipoPorRol(rolNombre: string, equipoId?: number | null) {
+    const requiereEquipo =
+      rolNombre === Rol.CAPITAN || rolNombre === Rol.ENTRENADOR;
+    if (requiereEquipo && !equipoId) {
+      throw new BadRequestException(
+        'El capitán y el entrenador deben tener un equipo asignado (equipoId)',
+      );
+    }
+  }
+
   async create(createUsuarioDto: CreateUsuarioDto): Promise<Usuario> {
     // Verificar que el rol existe
     const rol = await this.rolesService.findOne(createUsuarioDto.rolId);
@@ -28,6 +40,8 @@ export class UsuariosService {
         `Rol con ID ${createUsuarioDto.rolId} no existe`,
       );
     }
+
+    this.validarEquipoPorRol(rol.nombre, createUsuarioDto.equipoId);
 
     // Verificar email único
     const existeEmail = await this.usuarioRepository.findOne({
@@ -85,6 +99,7 @@ export class UsuariosService {
         password: true,
         activo: true,
         rolId: true,
+        equipoId: true,
       },
       relations: { rol: true },
     });
@@ -96,10 +111,18 @@ export class UsuariosService {
   ): Promise<Usuario> {
     const usuario = await this.findOne(id);
 
-    // Si cambia el rol, verificar que existe
+    // Si cambia el rol, verificar que existe y usarlo para validar
+    let rolNombre = usuario.rol?.nombre ?? '';
     if (updateUsuarioDto.rolId) {
-      await this.rolesService.findOne(updateUsuarioDto.rolId);
+      const rolNuevo = await this.rolesService.findOne(updateUsuarioDto.rolId);
+      usuario.rol = rolNuevo;
+      rolNombre = rolNuevo.nombre;
     }
+
+    this.validarEquipoPorRol(
+      rolNombre,
+      updateUsuarioDto.equipoId ?? usuario.equipoId,
+    );
 
     // Si cambia el email, verificar que no esté duplicado
     if (updateUsuarioDto.email && updateUsuarioDto.email !== usuario.email) {
@@ -122,4 +145,3 @@ export class UsuariosService {
     await this.usuarioRepository.remove(usuario);
   }
 }
-

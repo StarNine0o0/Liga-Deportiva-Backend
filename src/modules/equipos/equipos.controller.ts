@@ -1,3 +1,4 @@
+import { AdminEscribe } from '../auth/decorators/roles.decorator.js';
 import {
   Controller,
   Get,
@@ -24,6 +25,7 @@ import {
 
 @ApiTags('Equipos')
 @ApiBearerAuth()
+@AdminEscribe()
 @Controller('equipos')
 export class EquiposController {
   constructor(

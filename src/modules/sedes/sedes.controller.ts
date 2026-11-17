@@ -1,3 +1,4 @@
+import { AdminEscribe } from '../auth/decorators/roles.decorator.js';
 import {
   Controller,
   Get,
@@ -28,6 +29,7 @@ import { UpdateSedeDto } from './dto/update-sede.dto.js';
 
 @ApiTags('Sedes')
 @ApiBearerAuth()
+@AdminEscribe()
 @Controller('sedes')
 export class SedesController {
   constructor(private readonly sedesService: SedesService) {}

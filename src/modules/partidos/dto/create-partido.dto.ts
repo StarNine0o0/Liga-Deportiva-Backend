@@ -7,6 +7,7 @@ import {
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
+
 export class CreatePartidoDto {
   @ApiProperty({ example: 1, description: 'ID de la jornada' })
   @IsInt()
@@ -19,6 +20,11 @@ export class CreatePartidoDto {
   @ApiProperty({ example: 2, description: 'ID del equipo visitante' })
   @IsInt()
   equipoVisitanteId: number;
+
+  @ApiPropertyOptional({ example: 5, description: 'ID del usuario árbitro' })
+  @IsOptional()
+  @IsInt()
+  arbitroId?: number;
 
   @ApiPropertyOptional({ example: 1, description: 'ID de la sede' })
   @IsInt()
