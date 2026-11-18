@@ -41,6 +41,18 @@ export class CreatePartidoDto {
   @IsOptional()
   golesLocal?: number;
 
+  @ApiPropertyOptional({ example: 4, description: 'Penales del local (liguilla)' })
+  @IsInt()
+  @Min(0)
+  @IsOptional()
+  penalesLocal?: number;
+
+  @ApiPropertyOptional({ example: 3, description: 'Penales del visitante (liguilla)' })
+  @IsInt()
+  @Min(0)
+  @IsOptional()
+  penalesVisitante?: number;
+
   @ApiPropertyOptional({ example: 0 })
   @IsInt()
   @Min(0)

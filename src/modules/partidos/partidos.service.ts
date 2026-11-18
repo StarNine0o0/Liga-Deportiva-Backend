@@ -23,7 +23,13 @@ import { Rol } from '../auth/roles.enum.js';
 export const MIN_JUGADORES_POR_EQUIPO = 9;
 
 /** Campos que un árbitro sí puede modificar en su partido */
-const CAMPOS_ARBITRO = ['golesLocal', 'golesVisitante', 'estado'];
+const CAMPOS_ARBITRO = [
+  'golesLocal',
+  'golesVisitante',
+  'estado',
+  'penalesLocal',
+  'penalesVisitante',
+];
 
 @Injectable()
 export class PartidosService {

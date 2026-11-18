@@ -16,6 +16,8 @@ import { TorneoEquipoModule } from './modules/torneo-equipo/torneo-equipo.module
 import { AlineacionesModule } from './modules/alineaciones/alineaciones.module.js';
 import { GolesModule } from './modules/goles/goles.module.js';
 import { PosicionesModule } from './modules/posiciones/posiciones.module.js';
+import { LiguillaModule } from './modules/liguilla/liguilla.module.js';
+// en imports: LiguillaModule,
 
 // Seeds
 import { SeedModule } from './common/seeds/seed.module.js';
@@ -64,6 +66,7 @@ import { TorneosModule } from './modules/torneos/torneos.module.js';
     TemporadasModule,
     JugadoresModule,
     TorneosModule,
+    LiguillaModule,
   ],
   controllers: [AppController],
   providers: [

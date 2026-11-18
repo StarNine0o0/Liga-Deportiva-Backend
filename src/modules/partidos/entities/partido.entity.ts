@@ -10,6 +10,7 @@ import { Jornada } from '../../jornadas/entities/jornada.entity.js';
 import { Equipo } from '../../equipos/entities/equipo.entity.js';
 import { Sede } from '../../sedes/entities/sede.entity.js';
 import { Usuario } from '../../usuarios/entities/usuario.entity.js';
+import { Serie } from '../../liguilla/entities/serie.entity.js';
 
 export type EstadoPartido =
   | 'PROGRAMADO'
@@ -52,6 +53,24 @@ export class Partido {
 
   @Column({ type: 'int', nullable: true })
   arbitroId: number | null;
+
+  // Liguilla: serie a la que pertenece (null = fase regular)
+  @ManyToOne(() => Serie, { nullable: true })
+  serie: Relation<Serie> | null;
+
+  @Column({ type: 'int', nullable: true })
+  serieId: number | null;
+
+  /** 1 = ida (o partido único), 2 = vuelta */
+  @Column({ type: 'int', nullable: true })
+  numeroPartido: number | null;
+
+  /** Penales (solo si se define por penales en el último partido de la serie) */
+  @Column({ type: 'int', nullable: true })
+  penalesLocal: number | null;
+
+  @Column({ type: 'int', nullable: true })
+  penalesVisitante: number | null;
 
   @Column({ type: 'datetime' })
   fechaHora: Date;

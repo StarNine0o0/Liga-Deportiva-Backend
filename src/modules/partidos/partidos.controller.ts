@@ -15,12 +15,16 @@ import { CreatePartidoDto } from './dto/create-partido.dto.js';
 import { UpdatePartidoDto } from './dto/update-partido.dto.js';
 import { Roles } from '../auth/decorators/roles.decorator.js';
 import type { UserJwt } from '../auth/permisos.helper.js';
+import { LiguillaService } from '../liguilla/liguilla.service.js';
 
 @ApiTags('Partidos')
 @ApiBearerAuth()
 @Controller('partidos')
 export class PartidosController {
-  constructor(private readonly partidosService: PartidosService) {}
+  constructor(
+    private readonly partidosService: PartidosService,
+    private readonly liguillaService: LiguillaService,
+  ) {}
 
   @Post()
   @Roles('admin')
@@ -55,13 +59,15 @@ export class PartidosController {
 
   @Patch(':id')
   @Roles('admin', 'arbitro')
-  @ApiOperation({ summary: 'Actualizar un partido' })
-  update(
+  @ApiOperation({ summary: 'Actualizar un partido (avanza la liguilla si aplica)' })
+  async update(
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: UpdatePartidoDto,
     @Req() req: { user: UserJwt },
   ) {
-    return this.partidosService.update(id, dto, req.user);
+    const partido = await this.partidosService.update(id, dto, req.user);
+    const aviso = await this.liguillaService.procesarPartido(partido);
+    return aviso ? { ...partido, avisoLiguilla: aviso } : partido;
   }
 
   @Delete(':id')

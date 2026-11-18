@@ -34,6 +34,22 @@ export class Torneo {
   })
   estado: EstadoTorneo;
 
+  /** Clasificados a la liguilla: 0 = sin liguilla, 4 = Top 4, 8 = Top 8 */
+  @Column({ type: 'int', default: 0 })
+  liguillaTamano: number;
+
+  /** false = partido único, true = ida y vuelta */
+  @Column({ type: 'boolean', default: false })
+  liguillaIdaVuelta: boolean;
+
+  /** Si el global queda empatado: penales o mejor posición en la tabla */
+  @Column({
+    type: 'enum',
+    enum: ['PENALES', 'POSICION'],
+    default: 'POSICION',
+  })
+  desempateGlobal: 'PENALES' | 'POSICION';
+
   @ManyToOne(() => Temporada)
   temporada: Relation<Temporada>;
 
