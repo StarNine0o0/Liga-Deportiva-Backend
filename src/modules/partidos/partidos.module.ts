@@ -8,10 +8,11 @@ import { EquiposModule } from '../equipos/equipos.module.js';
 import { SedesModule } from '../sedes/sedes.module.js';
 import { JugadoresModule } from '../jugadores/jugadores.module.js';
 import { LiguillaModule } from '../liguilla/liguilla.module.js';
+import { Alineacion } from '../alineaciones/entities/alineacion.entity.js';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Partido]),
+    TypeOrmModule.forFeature([Partido, Alineacion]),
     JornadasModule,
     EquiposModule,
     SedesModule,

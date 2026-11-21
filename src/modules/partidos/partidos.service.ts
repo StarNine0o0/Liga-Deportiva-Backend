@@ -19,8 +19,12 @@ import {
   verificarArbitro,
 } from '../auth/permisos.helper.js';
 import { Rol } from '../auth/roles.enum.js';
+import { Alineacion } from '../alineaciones/entities/alineacion.entity.js';
+import { LiguillaService } from '../liguilla/liguilla.service.js'; 
+
 
 export const MIN_JUGADORES_POR_EQUIPO = 9;
+export const MIN_TITULARES_ALINEACION = 9;
 
 /** Campos que un árbitro sí puede modificar en su partido */
 const CAMPOS_ARBITRO = [
@@ -40,6 +44,9 @@ export class PartidosService {
     private readonly equiposService: EquiposService,
     private readonly sedesService: SedesService,
     private readonly jugadoresService: JugadoresService,
+    @InjectRepository(Alineacion)
+    private readonly alineacionRepository: Repository<Alineacion>,
+    private readonly liguillaService: LiguillaService,
   ) {}
 
   /** Filtro de visibilidad según el rol (admin e invitado ven todo) */
@@ -58,6 +65,31 @@ export class PartidosService {
       ];
     }
     return extra;
+  }
+  // Validacion alinicion 
+  /** Cada equipo debe tener su alineación titular definida antes de iniciar o finalizar el partido */
+  private async validarAlineacionesDefinidas(
+    partidoId: number,
+    equipoIds: number[],
+  ): Promise<void> {
+    for (const equipoId of equipoIds) {
+      const titulares = await this.alineacionRepository.count({
+        where: {
+          partidoId,
+          equipoId,
+          titular: true,
+        },
+      });
+
+      if (titulares < MIN_TITULARES_ALINEACION) {
+        const equipo = await this.equiposService.findOne(equipoId);
+        throw new BadRequestException(
+          titulares === 0
+            ? `El equipo "${equipo.nombre}" no tiene alineación definida para este partido`
+            : `El equipo "${equipo.nombre}" solo tiene ${titulares} titular(es) en su alineación (mínimo ${MIN_TITULARES_ALINEACION})`,
+        );
+      }
+    }
   }
 
   /** Cada equipo debe tener mínimo 9 jugadores registrados para poder jugar */
@@ -185,10 +217,20 @@ export class PartidosService {
     const cambiaEquipos =
       local !== partido.equipoLocalId ||
       visitante !== partido.equipoVisitanteId;
-    const iniciando =
-      dto.estado === 'EN_JUEGO' && partido.estado !== 'EN_JUEGO';
-    if (cambiaEquipos || iniciando) {
+
+      //validacion para no saltar de programado a finalizado si no hay jugadores 
+      const estadosActivos = ['EN_JUEGO', 'FINALIZADO'];
+    const iniciandoOFinalizando =
+      dto.estado !== undefined &&
+      estadosActivos.includes(dto.estado) &&
+      !estadosActivos.includes(partido.estado);
+
+    if (cambiaEquipos || iniciandoOFinalizando) {
       await this.validarJugadoresMinimos([local, visitante]);
+    }
+
+    if (iniciandoOFinalizando) {
+      await this.validarAlineacionesDefinidas(id, [local, visitante]);
     }
 
     // update() en vez de assign + save: con las relaciones cargadas, TypeORM

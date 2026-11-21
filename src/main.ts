@@ -13,7 +13,10 @@ async function bootstrap() {
   app.setGlobalPrefix('api');
 
   // CORS habilitado para el frontend
-  app.enableCors();
+ app.enableCors({
+    origin: true,          
+    credentials: true,
+  });
 
   // Validación global de DTOs con class-validator
   app.useGlobalPipes(
