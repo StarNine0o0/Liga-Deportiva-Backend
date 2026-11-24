@@ -25,8 +25,26 @@ export class GolesService {
     verificarArbitro(user, partido.arbitroId ?? -1);
   }
 
-  private async notificarSiEsLiguilla(partidoId: number): Promise<void> {
+  /** Recalcula golesLocal y golesVisitante en el partido y despierta el bracket en vivo */
+  private async sincronizarPartidoYLiguilla(partidoId: number): Promise<void> {
     const partido = await this.partidosService.findOne(partidoId);
+    const golesPartido = await this.golRepository.find({
+      where: { partidoId },
+    });
+
+    const golesLocal = golesPartido.filter(
+      (g) => g.equipoId === partido.equipoLocalId,
+    ).length;
+    const golesVisitante = golesPartido.filter(
+      (g) => g.equipoId === partido.equipoVisitanteId,
+    ).length;
+
+    await this.partidosService.sincronizarMarcador(
+      partidoId,
+      golesLocal,
+      golesVisitante,
+    );
+
     if (partido.serieId && partido.jornada?.torneoId) {
       this.liguillaService.notificarCambioBracket(partido.jornada.torneoId);
     }
@@ -38,20 +56,20 @@ export class GolesService {
 
     const gol = this.golRepository.create(createGolDto);
     const guardado = await this.golRepository.save(gol);
-    await this.notificarSiEsLiguilla(guardado.partidoId);
+    await this.sincronizarPartidoYLiguilla(guardado.partidoId);
     return guardado;
   }
 
   async findAll(): Promise<Gol[]> {
     return this.golRepository.find({
-      relations: { equipo: true },
+      relations: { equipo: true, jugador: true },
     });
   }
 
   async findOne(id: number): Promise<Gol> {
     const gol = await this.golRepository.findOne({
       where: { id },
-      relations: { equipo: true },
+      relations: { equipo: true, jugador: true },
     });
     if (!gol) {
       throw new NotFoundException(`Gol con ID ${id} no encontrado`);
@@ -62,7 +80,8 @@ export class GolesService {
   async findByPartido(partidoId: number): Promise<Gol[]> {
     return this.golRepository.find({
       where: { partidoId },
-      relations: { equipo: true },
+      relations: { equipo: true, jugador: true },
+      order: { minuto: 'ASC' },
     });
   }
 
@@ -72,6 +91,7 @@ export class GolesService {
     user?: UserJwt,
   ): Promise<Gol> {
     const gol = await this.findOne(id);
+    const partidoAnteriorId = gol.partidoId;
 
     await this.verificarPartido(gol.partidoId, user);
     if (updateGolDto.partidoId) {
@@ -84,7 +104,12 @@ export class GolesService {
 
     Object.assign(gol, updateGolDto);
     const actualizado = await this.golRepository.save(gol);
-    await this.notificarSiEsLiguilla(actualizado.partidoId);
+
+    await this.sincronizarPartidoYLiguilla(actualizado.partidoId);
+    if (partidoAnteriorId !== actualizado.partidoId) {
+      await this.sincronizarPartidoYLiguilla(partidoAnteriorId);
+    }
+
     return actualizado;
   }
 
@@ -93,6 +118,6 @@ export class GolesService {
     await this.verificarPartido(gol.partidoId, user);
     const partidoId = gol.partidoId;
     await this.golRepository.remove(gol);
-    await this.notificarSiEsLiguilla(partidoId);
+    await this.sincronizarPartidoYLiguilla(partidoId);
   }
 }

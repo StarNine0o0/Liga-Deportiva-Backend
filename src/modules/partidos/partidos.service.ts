@@ -254,6 +254,19 @@ export class PartidosService {
     return actualizado;
   }
 
+  /** Actualiza el marcador oficial del partido cuando cambian los registros en la tabla goles */
+  async sincronizarMarcador(
+    partidoId: number,
+    golesLocal: number,
+    golesVisitante: number,
+  ): Promise<Partido> {
+    await this.partidoRepository.update(partidoId, {
+      golesLocal,
+      golesVisitante,
+    });
+    return this.findOne(partidoId);
+  }
+
   async remove(id: number): Promise<void> {
     const partido = await this.findOne(id);
     await this.partidoRepository.remove(partido);
