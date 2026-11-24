@@ -12,10 +12,13 @@ import { Jornada } from '../jornadas/entities/jornada.entity.js';
 import { Torneo } from '../torneos/entities/torneo.entity.js';
 import { TorneoEquipo } from '../torneo-equipo/entities/torneo-equipo.entity.js';
 import { Equipo } from '../equipos/entities/equipo.entity.js';
+import { EventEmitter } from 'node:events'; //para el long polling de la liguilla
+import { createHash } from 'node:crypto';
 import {
   ConfigLiguillaDto,
   GenerarLiguillaDto,
 } from './dto/liguilla.dto.js';
+import { version } from 'node:os';
 
 export interface FilaTabla {
   posicion: number;
@@ -34,6 +37,8 @@ export interface FilaTabla {
 
 @Injectable()
 export class LiguillaService {
+
+  private readonly bracketEvents = new EventEmitter();  
   constructor(
     @InjectRepository(Serie)
     private readonly serieRepo: Repository<Serie>,
@@ -47,7 +52,12 @@ export class LiguillaService {
     private readonly torneoEquipoRepo: Repository<TorneoEquipo>,
     @InjectRepository(Equipo)
     private readonly equipoRepo: Repository<Equipo>,
-  ) {}
+  ) {
+    this.bracketEvents.setMaxListeners(100); //evitar la advertencia de max listeners , para si hay muchos usuarios esperando el bracket
+  }
+  notificarCambioBracket(torneoId: number) { //Esto se usa para notificar a los clientes que el bracket ha cambiado 
+    this.bracketEvents.emit(`bracketUpdate:${torneoId}`);
+  }
 
   // ───────────────────────── utilidades ─────────────────────────
 
@@ -284,7 +294,65 @@ export class LiguillaService {
     }
 
     return this.bracket(torneoId);
+    
+    
   }
+
+  /**
+   * Long Polling: espera hasta `timeoutMs` a que cambie el bracket del torneo.
+   * Devuelve el nuevo bracket si hubo cambio, o `null` si venció el tiempo (204).
+   */
+  async esperarCambioBracket(
+    torneoId: number,
+    versionCliente?: string,
+    timeoutMs = 25_000,
+    abortSignal?: AbortSignal,
+  ) {
+    const actual = await this.bracket(torneoId);
+
+    // Si el cliente no mandó versión o el bracket ya cambió antes de entrar en espera, responder al instante
+    if (!versionCliente || actual.version !== versionCliente) {
+      return actual;
+    }
+
+    return new Promise<Awaited<ReturnType<LiguillaService['bracket']>> | null>(
+      (resolve) => {
+        const evento = `bracket:${torneoId}`;
+        let terminado = false;
+
+        const limpiar = () => {
+          if (terminado) return;
+          terminado = true;
+          clearTimeout(timer);
+          this.bracketEvents.off(evento, onCambio);
+          abortSignal?.removeEventListener('abort', onAbort);
+        };
+
+        const onCambio = async () => {
+          limpiar();
+          try {
+            const actualizado = await this.bracket(torneoId);
+            resolve(actualizado);
+          } catch {
+            resolve(null);
+          }
+        };
+
+        const onAbort = () => {
+          limpiar();
+          resolve(null);
+        };
+
+        const timer = setTimeout(() => {
+          limpiar();
+          resolve(null);
+        }, timeoutMs);
+
+        this.bracketEvents.on(evento, onCambio);
+        abortSignal?.addEventListener('abort', onAbort, { once: true });
+      },
+    );
+  }  
 
   /**
    * Crea los partidos de una serie cuando ya se conocen sus dos equipos.
@@ -572,7 +640,7 @@ export class LiguillaService {
         )
       : null;
 
-    return {
+    const payloadSinVersion = {
       torneoId,
       config: {
         liguillaTamano: torneo.liguillaTamano,
@@ -581,13 +649,24 @@ export class LiguillaService {
       },
       estado:
         series.length === 0
-          ? 'SIN_GENERAR'
+          ? ('SIN_GENERAR' as const)
           : campeon
-            ? 'FINALIZADA'
-            : 'EN_CURSO',
+            ? ('FINALIZADA' as const)
+            : ('EN_CURSO' as const),
       campeon,
       rondas,
     };
+
+    const version = createHash('sha1')
+      .update(JSON.stringify(payloadSinVersion))
+      .digest('hex')
+      .slice(0, 12);
+
+    return {
+      ...payloadSinVersion,
+      version,
+    };
+    
   }
 
   // ───────────────────────── reiniciar ─────────────────────────

@@ -6,9 +6,14 @@ import {
   Delete,
   Body,
   Param,
+  Query,
+  Req,
+  Res,
   ParseIntPipe,
+  HttpStatus,
 } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
+import type { Request, Response } from 'express';
+import { ApiTags, ApiOperation, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
 import { LiguillaService } from './liguilla.service.js';
 import {
   ConfigLiguillaDto,
@@ -33,6 +38,38 @@ export class LiguillaController {
   @ApiOperation({ summary: 'Bracket de la liguilla (series, partidos y campeón)' })
   bracket(@Param('torneoId', ParseIntPipe) torneoId: number) {
     return this.liguillaService.bracket(torneoId);
+  }
+
+  @Get(':torneoId/bracket/poll')
+  @ApiOperation({ summary: 'Long Polling para actualizaciones en tiempo real del bracket' })
+  @ApiQuery({ name: 'version', required: false, description: 'Hash de versión actual en cliente' })
+  async pollBracket(
+    @Param('torneoId', ParseIntPipe) torneoId: number,
+    @Query('version') version: string | undefined,
+    @Req() req: Request,
+    @Res() res: Response,
+  ) {
+    const controller = new AbortController();
+    res.on('close', () => {
+      if (!res.writableEnded) {
+        controller.abort();
+      }
+    });
+
+    const resultado = await this.liguillaService.esperarCambioBracket(
+      torneoId,
+      version,
+      25_000,
+      controller.signal,
+    );
+
+    if (res.writableEnded) return;
+
+    if (!resultado) {
+      return res.status(HttpStatus.NO_CONTENT).send();
+    }
+
+    return res.status(HttpStatus.OK).json(resultado);
   }
 
   @Patch(':torneoId/config')

@@ -240,7 +240,18 @@ export class PartidosService {
       ...resto,
       ...(fechaHora ? { fechaHora: new Date(fechaHora) } : {}),
     });
-    return this.findOne(id);
+    
+    const actualizado = await this.findOne(id);
+    
+    // Si es partido de liguilla, procesa avance de ronda y despierta el Long Polling
+    if (actualizado.serieId) {
+      await this.liguillaService.procesarPartido(actualizado);
+      if (actualizado.jornada?.torneoId) {
+        this.liguillaService.notificarCambioBracket(actualizado.jornada.torneoId);
+      }
+    }
+
+    return actualizado;
   }
 
   async remove(id: number): Promise<void> {
