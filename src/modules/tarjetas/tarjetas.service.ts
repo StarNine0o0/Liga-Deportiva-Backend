@@ -6,7 +6,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { FindOptionsWhere, Not, Repository } from 'typeorm';
+import { FindOptionsWhere, In, Not, Repository } from 'typeorm';
 import { Tarjeta, type TipoTarjeta } from './entities/tarjeta.entity.js';
 import { CreateTarjetaDto } from './dto/create-tarjeta.dto.js';
 import { UpdateTarjetaDto } from './dto/update-tarjeta.dto.js';
@@ -19,6 +19,8 @@ import {
 } from '../auth/permisos.helper.js';
 import { Rol } from '../auth/roles.enum.js';
 
+export type TarjetaConPartido = Tarjeta & { partido?: any };
+
 @Injectable()
 export class TarjetasService {
   constructor(
@@ -28,11 +30,6 @@ export class TarjetasService {
     private readonly jugadoresService: JugadoresService,
   ) {}
 
-  /**
-   * Reglas de negocio de una tarjeta.
-   * excluirId: al editar, ignora la propia tarjeta en el conteo.
-   * user: si viene, el árbitro solo puede operar en sus partidos.
-   */
   private async validarTarjeta(
     partidoId: number,
     jugadorId: number,
@@ -89,22 +86,31 @@ export class TarjetasService {
     return this.tarjetaRepository.save(tarjeta);
   }
 
-  async findAll(user?: UserJwt): Promise<Tarjeta[]> {
+  async findAll(user?: UserJwt): Promise<TarjetaConPartido[]> {
+    // Una sola llamada TCP al microservicio para filtrar e hidratar sin N+1
+    const partidosVisibles = await this.partidosService.findAll(user);
+    const partidosMap = new Map(partidosVisibles.map((p) => [p.id, p]));
+
     let where: FindOptionsWhere<Tarjeta> | undefined;
     if (user?.rol === Rol.ARBITRO) {
-      where = { partido: { arbitroId: user.id } };
+      const partidoIds = partidosVisibles.map((p) => p.id);
+      if (partidoIds.length === 0) return [];
+      where = { partidoId: In(partidoIds) };
     } else if (user && esDeEquipo(user)) {
       where = { jugador: { equipoId: user.equipoId ?? -1 } };
     }
 
-    return this.tarjetaRepository.find({
+    const tarjetas = await this.tarjetaRepository.find({
       where,
-      relations: { partido: true, jugador: true },
+      relations: { jugador: true },
     });
+
+    return tarjetas.map((t) =>
+      Object.assign(t, { partido: partidosMap.get(t.partidoId) ?? null }),
+    );
   }
 
   async findByPartido(partidoId: number, user?: UserJwt): Promise<Tarjeta[]> {
-    // Lanza 403 si el partido no le corresponde al árbitro / equipo
     await this.partidosService.findOne(partidoId, user);
 
     return this.tarjetaRepository.find({
@@ -114,16 +120,20 @@ export class TarjetasService {
     });
   }
 
-  async findOne(id: number, user?: UserJwt): Promise<Tarjeta> {
+  async findOne(id: number, user?: UserJwt): Promise<TarjetaConPartido> {
     const tarjeta = await this.tarjetaRepository.findOne({
       where: { id },
-      relations: { partido: true, jugador: true },
+      relations: { jugador: true },
     });
     if (!tarjeta) {
       throw new NotFoundException(`Tarjeta con ID ${id} no encontrada`);
     }
 
-    if (user?.rol === Rol.ARBITRO && tarjeta.partido.arbitroId !== user.id) {
+    const partido = await this.partidosService
+      .findOne(tarjeta.partidoId)
+      .catch(() => null);
+
+    if (user?.rol === Rol.ARBITRO && partido?.arbitroId !== user.id) {
       throw new ForbiddenException('Esta tarjeta no es de tus partidos');
     }
     if (
@@ -134,21 +144,20 @@ export class TarjetasService {
       throw new ForbiddenException('Esta tarjeta no es de tu equipo');
     }
 
-    return tarjeta;
+    // Object.assign conserva la instancia de entidad Tarjeta para repository.remove()
+    return Object.assign(tarjeta, { partido });
   }
 
   async update(
     id: number,
     dto: UpdateTarjetaDto,
     user?: UserJwt,
-  ): Promise<Tarjeta> {
+  ): Promise<TarjetaConPartido> {
     const actual = await this.findOne(id);
     if (Object.keys(dto).length === 0) return actual;
 
-    // El partido actual de la tarjeta debe ser del árbitro...
-    if (user) verificarArbitro(user, actual.partido.arbitroId ?? -1);
+    if (user) verificarArbitro(user, actual.partido?.arbitroId ?? -1);
 
-    // ...y el nuevo (si lo cambia) también, se revisa dentro de validarTarjeta
     await this.validarTarjeta(
       dto.partidoId ?? actual.partidoId,
       dto.jugadorId ?? actual.jugadorId,
@@ -157,15 +166,13 @@ export class TarjetasService {
       user,
     );
 
-    // update() en vez de save(): con las relaciones cargadas, TypeORM podía
-    // ignorar el partidoId / jugadorId nuevo y quedarse con el viejo
     await this.tarjetaRepository.update(id, dto);
     return this.findOne(id);
   }
 
   async remove(id: number, user?: UserJwt): Promise<void> {
     const tarjeta = await this.findOne(id);
-    if (user) verificarArbitro(user, tarjeta.partido.arbitroId ?? -1);
+    if (user) verificarArbitro(user, tarjeta.partido?.arbitroId ?? -1);
     await this.tarjetaRepository.remove(tarjeta);
   }
 }

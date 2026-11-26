@@ -5,8 +5,7 @@ import {
   ForbiddenException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { FindOptionsWhere, Repository } from 'typeorm';
-import { Partido } from './entities/partido.entity.js';
+import { Repository } from 'typeorm';
 import { CreatePartidoDto } from './dto/create-partido.dto.js';
 import { UpdatePartidoDto } from './dto/update-partido.dto.js';
 import { JornadasService } from '../jornadas/jornadas.service.js';
@@ -20,13 +19,16 @@ import {
 } from '../auth/permisos.helper.js';
 import { Rol } from '../auth/roles.enum.js';
 import { Alineacion } from '../alineaciones/entities/alineacion.entity.js';
-import { LiguillaService } from '../liguilla/liguilla.service.js'; 
-
+import { LiguillaService } from '../liguilla/liguilla.service.js';
+import {
+  PartidosGatewayService,
+  type FiltroPartidosRemoto,
+  type PartidoRemoto,
+} from './partidos.gateway.js';
 
 export const MIN_JUGADORES_POR_EQUIPO = 9;
 export const MIN_TITULARES_ALINEACION = 9;
 
-/** Campos que un árbitro sí puede modificar en su partido */
 const CAMPOS_ARBITRO = [
   'golesLocal',
   'golesVisitante',
@@ -38,8 +40,7 @@ const CAMPOS_ARBITRO = [
 @Injectable()
 export class PartidosService {
   constructor(
-    @InjectRepository(Partido)
-    private readonly partidoRepository: Repository<Partido>,
+    private readonly partidosGateway: PartidosGatewayService,
     private readonly jornadasService: JornadasService,
     private readonly equiposService: EquiposService,
     private readonly sedesService: SedesService,
@@ -49,36 +50,50 @@ export class PartidosService {
     private readonly liguillaService: LiguillaService,
   ) {}
 
-  /** Filtro de visibilidad según el rol (admin e invitado ven todo) */
-  private scope(
+  /** Traduce el rol del usuario al filtro soportado por el microservicio */
+  private buildFiltro(
     user?: UserJwt,
-    extra: FindOptionsWhere<Partido> = {},
-  ): FindOptionsWhere<Partido> | FindOptionsWhere<Partido>[] {
+    extra: FiltroPartidosRemoto = {},
+  ): FiltroPartidosRemoto {
     if (user?.rol === Rol.ARBITRO) {
       return { ...extra, arbitroId: user.id };
     }
     if (user && esDeEquipo(user)) {
-      const eq = user.equipoId ?? -1;
-      return [
-        { ...extra, equipoLocalId: eq },
-        { ...extra, equipoVisitanteId: eq },
-      ];
+      return { ...extra, equipoId: user.equipoId ?? -1 };
     }
     return extra;
   }
-  // Validacion alinicion 
-  /** Cada equipo debe tener su alineación titular definida antes de iniciar o finalizar el partido */
+
+  /** Hidrata en bloque jornada, equipoLocal, equipoVisitante y sede sin N+1 queries */
+  private async hidratar(lista: PartidoRemoto[]): Promise<any[]> {
+    if (lista.length === 0) return [];
+
+    const [jornadas, equipos, sedes] = await Promise.all([
+      this.jornadasService.findAll(),
+      this.equiposService.findAll(),
+      this.sedesService.findAll(),
+    ]);
+
+    const jornadasMap = new Map(jornadas.map((j) => [j.id, j]));
+    const equiposMap = new Map(equipos.map((e) => [e.id, e]));
+    const sedesMap = new Map(sedes.map((s) => [s.id, s]));
+
+    return lista.map((p) => ({
+      ...p,
+      jornada: jornadasMap.get(p.jornadaId) ?? null,
+      equipoLocal: equiposMap.get(p.equipoLocalId) ?? null,
+      equipoVisitante: equiposMap.get(p.equipoVisitanteId) ?? null,
+      sede: p.sedeId ? (sedesMap.get(p.sedeId) ?? null) : null,
+    }));
+  }
+
   private async validarAlineacionesDefinidas(
     partidoId: number,
     equipoIds: number[],
   ): Promise<void> {
     for (const equipoId of equipoIds) {
       const titulares = await this.alineacionRepository.count({
-        where: {
-          partidoId,
-          equipoId,
-          titular: true,
-        },
+        where: { partidoId, equipoId, titular: true },
       });
 
       if (titulares < MIN_TITULARES_ALINEACION) {
@@ -92,7 +107,6 @@ export class PartidosService {
     }
   }
 
-  /** Cada equipo debe tener mínimo 9 jugadores registrados para poder jugar */
   private async validarJugadoresMinimos(equipoIds: number[]): Promise<void> {
     for (const equipoId of equipoIds) {
       const total = await this.jugadoresService.countByEquipo(equipoId);
@@ -105,7 +119,7 @@ export class PartidosService {
     }
   }
 
-  async create(dto: CreatePartidoDto): Promise<Partido> {
+  async create(dto: CreatePartidoDto) {
     if (dto.equipoLocalId === dto.equipoVisitanteId) {
       throw new BadRequestException(
         'El equipo local y el visitante no pueden ser el mismo',
@@ -124,40 +138,25 @@ export class PartidosService {
       dto.equipoVisitanteId,
     ]);
 
-    const partido = this.partidoRepository.create(dto);
-    return this.partidoRepository.save(partido);
+    const creado = await this.partidosGateway.create(dto);
+    const [hidratado] = await this.hidratar([creado]);
+    return hidratado;
   }
 
-  async findAll(user?: UserJwt): Promise<Partido[]> {
-    return this.partidoRepository.find({
-      where: this.scope(user),
-      relations: {
-        jornada: true,
-        equipoLocal: true,
-        equipoVisitante: true,
-        sede: true,
-      },
-    });
+  async findAll(user?: UserJwt) {
+    const lista = await this.partidosGateway.findAll(this.buildFiltro(user));
+    return this.hidratar(lista);
   }
 
-  async findByJornada(jornadaId: number, user?: UserJwt): Promise<Partido[]> {
-    return this.partidoRepository.find({
-      where: this.scope(user, { jornadaId }),
-      relations: { equipoLocal: true, equipoVisitante: true, sede: true },
-      order: { fechaHora: 'ASC' },
-    });
+  async findByJornada(jornadaId: number, user?: UserJwt) {
+    const lista = await this.partidosGateway.findAll(
+      this.buildFiltro(user, { jornadaId }),
+    );
+    return this.hidratar(lista);
   }
 
-  async findOne(id: number, user?: UserJwt): Promise<Partido> {
-    const partido = await this.partidoRepository.findOne({
-      where: { id },
-      relations: {
-        jornada: true,
-        equipoLocal: true,
-        equipoVisitante: true,
-        sede: true,
-      },
-    });
+  async findOne(id: number, user?: UserJwt) {
+    const partido = await this.partidosGateway.findOne(id);
     if (!partido) {
       throw new NotFoundException(`Partido con ID ${id} no encontrado`);
     }
@@ -174,18 +173,14 @@ export class PartidosService {
       throw new ForbiddenException('Este partido no es de tu equipo');
     }
 
-    return partido;
+    const [hidratado] = await this.hidratar([partido]);
+    return hidratado;
   }
 
-  async update(
-    id: number,
-    dto: UpdatePartidoDto,
-    user?: UserJwt,
-  ): Promise<Partido> {
+  async update(id: number, dto: UpdatePartidoDto, user?: UserJwt) {
     const partido = await this.findOne(id);
     if (Object.keys(dto).length === 0) return partido;
 
-    // El árbitro solo puede tocar su partido y solo resultado/estado
     if (user?.rol === Rol.ARBITRO) {
       verificarArbitro(user, partido.arbitroId ?? -1);
       const noPermitidos = Object.keys(dto).filter(
@@ -213,13 +208,11 @@ export class PartidosService {
     }
     if (dto.sedeId) await this.sedesService.findOne(dto.sedeId);
 
-    // Se revalida si cambian los equipos o si el partido está por iniciar
     const cambiaEquipos =
       local !== partido.equipoLocalId ||
       visitante !== partido.equipoVisitanteId;
 
-      //validacion para no saltar de programado a finalizado si no hay jugadores 
-      const estadosActivos = ['EN_JUEGO', 'FINALIZADO'];
+    const estadosActivos = ['EN_JUEGO', 'FINALIZADO'];
     const iniciandoOFinalizando =
       dto.estado !== undefined &&
       estadosActivos.includes(dto.estado) &&
@@ -233,17 +226,9 @@ export class PartidosService {
       await this.validarAlineacionesDefinidas(id, [local, visitante]);
     }
 
-    // update() en vez de assign + save: con las relaciones cargadas, TypeORM
-    // podía ignorar el equipoLocalId / equipoVisitanteId nuevo
-    const { fechaHora, ...resto } = dto;
-    await this.partidoRepository.update(id, {
-      ...resto,
-      ...(fechaHora ? { fechaHora: new Date(fechaHora) } : {}),
-    });
-    
+    await this.partidosGateway.update(id, dto);
     const actualizado = await this.findOne(id);
-    
-    // Si es partido de liguilla, procesa avance de ronda y despierta el Long Polling
+
     if (actualizado.serieId) {
       await this.liguillaService.procesarPartido(actualizado);
       if (actualizado.jornada?.torneoId) {
@@ -254,13 +239,13 @@ export class PartidosService {
     return actualizado;
   }
 
-  /** Actualiza el marcador oficial del partido cuando cambian los registros en la tabla goles */
+  /** Actualiza el marcador en el microservicio cuando cambian los registros en goles */
   async sincronizarMarcador(
     partidoId: number,
     golesLocal: number,
     golesVisitante: number,
-  ): Promise<Partido> {
-    await this.partidoRepository.update(partidoId, {
+  ) {
+    await this.partidosGateway.update(partidoId, {
       golesLocal,
       golesVisitante,
     });
@@ -268,7 +253,7 @@ export class PartidosService {
   }
 
   async remove(id: number): Promise<void> {
-    const partido = await this.findOne(id);
-    await this.partidoRepository.remove(partido);
+    await this.findOne(id);
+    await this.partidosGateway.remove(id);
   }
 }

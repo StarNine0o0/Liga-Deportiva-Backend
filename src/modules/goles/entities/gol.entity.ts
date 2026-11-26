@@ -14,11 +14,8 @@ export class Gol {
   @PrimaryGeneratedColumn()
   id: number;
 
-    @ManyToOne(() => Partido)
-  partido: Relation<Partido>;
-
-  @Column()
-  partidoId: number;
+  @Column({ type: 'int' }) //modificado para funcionar con el microservico de partidos 
+partidoId: number;
 
   @ManyToOne(() => Jugador)
   jugador: Relation<Jugador>;

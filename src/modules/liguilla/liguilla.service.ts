@@ -7,18 +7,20 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { In, Not, Repository } from 'typeorm';
 import { Serie, type RondaLiguilla } from './entities/serie.entity.js';
-import { Partido } from '../partidos/entities/partido.entity.js';
 import { Jornada } from '../jornadas/entities/jornada.entity.js';
 import { Torneo } from '../torneos/entities/torneo.entity.js';
 import { TorneoEquipo } from '../torneo-equipo/entities/torneo-equipo.entity.js';
 import { Equipo } from '../equipos/entities/equipo.entity.js';
-import { EventEmitter } from 'node:events'; //para el long polling de la liguilla
+import { EventEmitter } from 'node:events';
 import { createHash } from 'node:crypto';
 import {
   ConfigLiguillaDto,
   GenerarLiguillaDto,
 } from './dto/liguilla.dto.js';
-import { version } from 'node:os';
+import {
+  PartidosGatewayService,
+  type PartidoRemoto,
+} from '../partidos/partidos.gateway.js';
 
 export interface FilaTabla {
   posicion: number;
@@ -37,13 +39,12 @@ export interface FilaTabla {
 
 @Injectable()
 export class LiguillaService {
+  private readonly bracketEvents = new EventEmitter();
 
-  private readonly bracketEvents = new EventEmitter();  
   constructor(
     @InjectRepository(Serie)
     private readonly serieRepo: Repository<Serie>,
-    @InjectRepository(Partido)
-    private readonly partidoRepo: Repository<Partido>,
+    private readonly partidosGateway: PartidosGatewayService,
     @InjectRepository(Jornada)
     private readonly jornadaRepo: Repository<Jornada>,
     @InjectRepository(Torneo)
@@ -53,13 +54,12 @@ export class LiguillaService {
     @InjectRepository(Equipo)
     private readonly equipoRepo: Repository<Equipo>,
   ) {
-    this.bracketEvents.setMaxListeners(100); //evitar la advertencia de max listeners , para si hay muchos usuarios esperando el bracket
-  }
-  notificarCambioBracket(torneoId: number) { //Esto se usa para notificar a los clientes que el bracket ha cambiado 
-    this.bracketEvents.emit(`bracketUpdate:${torneoId}`);
+    this.bracketEvents.setMaxListeners(100);
   }
 
-  // ───────────────────────── utilidades ─────────────────────────
+  notificarCambioBracket(torneoId: number) {
+    this.bracketEvents.emit(`bracketUpdate:${torneoId}`);
+  }
 
   private async getTorneo(id: number): Promise<Torneo> {
     const torneo = await this.torneoRepo.findOne({ where: { id } });
@@ -77,10 +77,6 @@ export class LiguillaService {
 
   // ───────────────────── tabla general (fase regular) ─────────────────────
 
-  /**
-   * Puntos (3/1/0), luego diferencia de goles, luego goles a favor.
-   * Solo cuentan los partidos FINALIZADOS de fase regular (sin serie).
-   */
   async tabla(torneoId: number): Promise<FilaTabla[]> {
     await this.getTorneo(torneoId);
 
@@ -99,36 +95,44 @@ export class LiguillaService {
     });
     for (const i of inscritos) filas.set(i.equipoId, nueva(i.equipo));
 
-    const partidos = await this.partidoRepo
-      .createQueryBuilder('p')
-      .innerJoin('p.jornada', 'j')
-      .leftJoinAndSelect('p.equipoLocal', 'el')
-      .leftJoinAndSelect('p.equipoVisitante', 'ev')
-      .where('j.torneoId = :torneoId', { torneoId })
-      .andWhere('p.serieId IS NULL')
-      .andWhere('p.estado = :estado', { estado: 'FINALIZADO' })
-      .getMany();
+    const jornadas = await this.jornadaRepo.find({ where: { torneoId } });
+    const rawPartidos = jornadas.length
+      ? await this.partidosGateway.findAll({
+          jornadaIds: jornadas.map((j) => j.id),
+        })
+      : [];
 
-    for (const p of partidos) {
-      if (!filas.has(p.equipoLocalId)) {
-        filas.set(p.equipoLocalId, nueva(p.equipoLocal));
-      }
-      if (!filas.has(p.equipoVisitanteId)) {
-        filas.set(p.equipoVisitanteId, nueva(p.equipoVisitante));
-      }
-      const l = filas.get(p.equipoLocalId)!;
-      const v = filas.get(p.equipoVisitanteId)!;
+    const partidos = rawPartidos.filter(
+      (p) => p.serieId == null && p.estado === 'FINALIZADO',
+    );
 
-      l.pj++; v.pj++;
-      l.gf += p.golesLocal; l.gc += p.golesVisitante;
-      v.gf += p.golesVisitante; v.gc += p.golesLocal;
+    if (partidos.length > 0) {
+      const equipos = await this.equipoRepo.find();
+      const equiposMap = new Map(equipos.map((e) => [e.id, e]));
 
-      if (p.golesLocal > p.golesVisitante) {
-        l.pg++; l.pts += 3; v.pp++;
-      } else if (p.golesLocal < p.golesVisitante) {
-        v.pg++; v.pts += 3; l.pp++;
-      } else {
-        l.pe++; v.pe++; l.pts += 1; v.pts += 1;
+      for (const p of partidos) {
+        if (!filas.has(p.equipoLocalId) && equiposMap.has(p.equipoLocalId)) {
+          filas.set(p.equipoLocalId, nueva(equiposMap.get(p.equipoLocalId)!));
+        }
+        if (!filas.has(p.equipoVisitanteId) && equiposMap.has(p.equipoVisitanteId)) {
+          filas.set(p.equipoVisitanteId, nueva(equiposMap.get(p.equipoVisitanteId)!));
+        }
+
+        const l = filas.get(p.equipoLocalId);
+        const v = filas.get(p.equipoVisitanteId);
+        if (!l || !v) continue;
+
+        l.pj++; v.pj++;
+        l.gf += p.golesLocal; l.gc += p.golesVisitante;
+        v.gf += p.golesVisitante; v.gc += p.golesLocal;
+
+        if (p.golesLocal > p.golesVisitante) {
+          l.pg++; l.pts += 3; v.pp++;
+        } else if (p.golesLocal < p.golesVisitante) {
+          v.pg++; v.pts += 3; l.pp++;
+        } else {
+          l.pe++; v.pe++; l.pts += 1; v.pts += 1;
+        }
       }
     }
 
@@ -211,15 +215,17 @@ export class LiguillaService {
     }
 
     if (!dto?.forzar) {
-      const pendientes = await this.partidoRepo
-        .createQueryBuilder('p')
-        .innerJoin('p.jornada', 'j')
-        .where('j.torneoId = :torneoId', { torneoId })
-        .andWhere('p.serieId IS NULL')
-        .andWhere('p.estado IN (:...estados)', {
-          estados: ['PROGRAMADO', 'EN_JUEGO'],
-        })
-        .getCount();
+      const jornadas = await this.jornadaRepo.find({ where: { torneoId } });
+      const rawPartidos = jornadas.length
+        ? await this.partidosGateway.findAll({
+            jornadaIds: jornadas.map((j) => j.id),
+          })
+        : [];
+      const pendientes = rawPartidos.filter(
+        (p) =>
+          p.serieId == null && ['PROGRAMADO', 'EN_JUEGO'].includes(p.estado),
+      ).length;
+
       if (pendientes > 0) {
         throw new BadRequestException(
           `Quedan ${pendientes} partido(s) de fase regular sin finalizar (usa forzar: true para generar de todos modos)`,
@@ -232,7 +238,6 @@ export class LiguillaService {
       }
     }
 
-    // 1) Árbol de series, de la final hacia atrás
     const crear = (
       ronda: RondaLiguilla,
       orden: number,
@@ -265,7 +270,6 @@ export class LiguillaService {
       }
     }
 
-    // 2) Seeding: Top 8 -> 1v8, 4v5 | 2v7, 3v6 ; Top 4 -> 1v4 | 2v3
     const cruces =
       tamano === 8
         ? [[1, 8], [4, 5], [2, 7], [3, 6]]
@@ -294,14 +298,8 @@ export class LiguillaService {
     }
 
     return this.bracket(torneoId);
-    
-    
   }
 
-  /**
-   * Long Polling: espera hasta `timeoutMs` a que cambie el bracket del torneo.
-   * Devuelve el nuevo bracket si hubo cambio, o `null` si venció el tiempo (204).
-   */
   async esperarCambioBracket(
     torneoId: number,
     versionCliente?: string,
@@ -310,14 +308,13 @@ export class LiguillaService {
   ) {
     const actual = await this.bracket(torneoId);
 
-    // Si el cliente no mandó versión o el bracket ya cambió antes de entrar en espera, responder al instante
     if (!versionCliente || actual.version !== versionCliente) {
       return actual;
     }
 
     return new Promise<Awaited<ReturnType<LiguillaService['bracket']>> | null>(
       (resolve) => {
-        const evento = `bracket:${torneoId}`;
+        const evento = `bracketUpdate:${torneoId}`;
         let terminado = false;
 
         const limpiar = () => {
@@ -352,13 +349,8 @@ export class LiguillaService {
         abortSignal?.addEventListener('abort', onAbort, { once: true });
       },
     );
-  }  
+  }
 
-  /**
-   * Crea los partidos de una serie cuando ya se conocen sus dos equipos.
-   * Partido único: el mejor sembrado es local.
-   * Ida y vuelta: el mejor sembrado cierra de local.
-   */
   private async crearPartidos(
     serie: Serie,
     torneo: Torneo,
@@ -387,37 +379,39 @@ export class LiguillaService {
         j.numero,
         j.fecha,
       );
-      await this.partidoRepo.save(
-        this.partidoRepo.create({
-          jornadaId,
-          equipoLocalId: j.local,
-          equipoVisitanteId: j.visitante,
-          fechaHora: j.fecha,
-          serieId: serie.id,
-          numeroPartido: j.numero,
-          estado: 'PROGRAMADO',
-        }),
-      );
+      await this.partidosGateway.create({
+        jornadaId,
+        equipoLocalId: j.local,
+        equipoVisitanteId: j.visitante,
+        fechaHora: j.fecha,
+        serieId: serie.id,
+        numeroPartido: j.numero,
+        estado: 'PROGRAMADO',
+      });
     }
 
     await this.serieRepo.update(serie.id, { estado: 'EN_JUEGO' });
   }
 
-  /** Una jornada por ronda y vuelta (todas las series de la ronda la comparten) */
   private async jornadaDeRonda(
     torneoId: number,
     ronda: RondaLiguilla,
     numeroPartido: number,
     fecha: Date,
   ): Promise<number> {
-    const hermano = await this.partidoRepo
-      .createQueryBuilder('p')
-      .innerJoin('p.serie', 's')
-      .where('s.torneoId = :torneoId', { torneoId })
-      .andWhere('s.ronda = :ronda', { ronda })
-      .andWhere('p.numeroPartido = :numeroPartido', { numeroPartido })
-      .getOne();
-    if (hermano) return hermano.jornadaId;
+    const seriesRonda = await this.serieRepo.find({
+      where: { torneoId, ronda },
+    });
+
+    if (seriesRonda.length > 0) {
+      const partidosPorSerie = await Promise.all(
+        seriesRonda.map((s) => this.partidosGateway.findAll({ serieId: s.id })),
+      );
+      const hermano = partidosPorSerie
+        .flat()
+        .find((p) => p.numeroPartido === numeroPartido);
+      if (hermano) return hermano.jornadaId;
+    }
 
     const raw = await this.jornadaRepo
       .createQueryBuilder('j')
@@ -438,11 +432,7 @@ export class LiguillaService {
 
   // ───────────────────────── avance automático ─────────────────────────
 
-  /**
-   * Se llama cada vez que se actualiza un partido.
-   * Devuelve un aviso (texto) si la serie quedó esperando algo, o null.
-   */
-  async procesarPartido(partido: Partido): Promise<string | null> {
+  async procesarPartido(partido: Pick<PartidoRemoto, 'serieId' | 'estado'>): Promise<string | null> {
     if (!partido.serieId || partido.estado !== 'FINALIZADO') return null;
     return this.resolverSerie(partido.serieId);
   }
@@ -462,19 +452,18 @@ export class LiguillaService {
     }
     const torneo = serie.torneo;
 
-    const partidos = await this.partidoRepo.find({
-      where: { serieId },
-      order: { numeroPartido: 'ASC' },
-    });
+    const partidos = (await this.partidosGateway.findAll({ serieId })).sort(
+      (a, b) => (a.numeroPartido ?? 0) - (b.numeroPartido ?? 0),
+    );
+
     const requeridos = torneo.liguillaIdaVuelta ? 2 : 1;
     if (
       partidos.length < requeridos ||
       partidos.some((p) => p.estado !== 'FINALIZADO')
     ) {
-      return null; // falta jugar la vuelta
+      return null;
     }
 
-    // Marcador global
     let a = 0;
     let b = 0;
     for (const p of partidos) {
@@ -516,10 +505,9 @@ export class LiguillaService {
         serie.slotSiguiente,
         ganadorId,
         seedGanador,
-        partidos[partidos.length - 1].fechaHora,
+        new Date(partidos[partidos.length - 1].fechaHora),
       );
     } else {
-      // Ganó la final: torneo terminado
       await this.torneoRepo.update(torneo.id, { estado: 'FINALIZADO' });
     }
     return null;
@@ -545,7 +533,6 @@ export class LiguillaService {
     await this.serieRepo.update(siguiente.id, cambios);
     Object.assign(siguiente, cambios);
 
-    // Cuando ya llegaron los dos equipos, se crean sus partidos
     if (siguiente.equipoAId && siguiente.equipoBId) {
       const ahora = new Date();
       const desde = ultimaFecha > ahora ? new Date(ultimaFecha) : ahora;
@@ -568,13 +555,19 @@ export class LiguillaService {
       order: { orden: 'ASC' },
     });
 
-    const partidos = series.length
-      ? await this.partidoRepo.find({
-          where: { serieId: In(series.map((s) => s.id)) },
-          relations: { equipoLocal: true, equipoVisitante: true },
-          order: { numeroPartido: 'ASC' },
-        })
-      : [];
+    const [partidosPorSerie, equipos] = await Promise.all([
+      series.length
+        ? Promise.all(
+            series.map((s) => this.partidosGateway.findAll({ serieId: s.id })),
+          )
+        : Promise.resolve([]),
+      this.equipoRepo.find(),
+    ]);
+
+    const partidos = partidosPorSerie
+      .flat()
+      .sort((a, b) => (a.numeroPartido ?? 0) - (b.numeroPartido ?? 0));
+    const equiposMap = new Map(equipos.map((e) => [e.id, e]));
 
     const eq = (e: Equipo | null | undefined, seed: number | null = null) =>
       e
@@ -620,8 +613,8 @@ export class LiguillaService {
                 numero: p.numeroPartido,
                 fechaHora: p.fechaHora,
                 estado: p.estado,
-                local: eq(p.equipoLocal),
-                visitante: eq(p.equipoVisitante),
+                local: eq(equiposMap.get(p.equipoLocalId)),
+                visitante: eq(equiposMap.get(p.equipoVisitanteId)),
                 golesLocal: p.golesLocal,
                 golesVisitante: p.golesVisitante,
                 penalesLocal: p.penalesLocal,
@@ -666,21 +659,21 @@ export class LiguillaService {
       ...payloadSinVersion,
       version,
     };
-    
   }
 
   // ───────────────────────── reiniciar ─────────────────────────
 
-  /** Borra la liguilla (solo si ningún partido de ella ha empezado) */
   async reiniciar(torneoId: number) {
     await this.getTorneo(torneoId);
 
     const series = await this.serieRepo.find({ where: { torneoId } });
     if (series.length === 0) return { reiniciada: false };
 
-    const partidos = await this.partidoRepo.find({
-      where: { serieId: In(series.map((s) => s.id)) },
-    });
+    const partidosPorSerie = await Promise.all(
+      series.map((s) => this.partidosGateway.findAll({ serieId: s.id })),
+    );
+    const partidos = partidosPorSerie.flat();
+
     if (partidos.some((p) => p.estado !== 'PROGRAMADO')) {
       throw new BadRequestException(
         'Hay partidos de la liguilla ya iniciados o finalizados: no se puede reiniciar',
@@ -689,7 +682,7 @@ export class LiguillaService {
 
     const jornadaIds = [...new Set(partidos.map((p) => p.jornadaId))];
     if (partidos.length) {
-      await this.partidoRepo.delete({ id: In(partidos.map((p) => p.id)) });
+      await Promise.all(partidos.map((p) => this.partidosGateway.remove(p.id)));
     }
     await this.serieRepo.delete({ torneoId });
     if (jornadaIds.length) {

@@ -1,26 +1,37 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
+import { ClientsModule, Transport } from '@nestjs/microservices';
 import { TypeOrmModule } from '@nestjs/typeorm';
-import { Partido } from './entities/partido.entity.js';
-import { PartidosService } from './partidos.service.js';
 import { PartidosController } from './partidos.controller.js';
+import { PartidosService } from './partidos.service.js';
+import { PartidosGatewayService } from './partidos.gateway.js';
+import { Alineacion } from '../alineaciones/entities/alineacion.entity.js';
 import { JornadasModule } from '../jornadas/jornadas.module.js';
 import { EquiposModule } from '../equipos/equipos.module.js';
 import { SedesModule } from '../sedes/sedes.module.js';
 import { JugadoresModule } from '../jugadores/jugadores.module.js';
 import { LiguillaModule } from '../liguilla/liguilla.module.js';
-import { Alineacion } from '../alineaciones/entities/alineacion.entity.js';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Partido, Alineacion]),
+    ClientsModule.register([
+      {
+        name: 'PARTIDOS_SERVICE',
+        transport: Transport.TCP,
+        options: {
+          host: process.env.PARTIDOS_MS_HOST || '127.0.0.1',
+          port: Number(process.env.PARTIDOS_MS_PORT || 3001),
+        },
+      },
+    ]),
+    TypeOrmModule.forFeature([Alineacion]),
     JornadasModule,
     EquiposModule,
     SedesModule,
     JugadoresModule,
-    LiguillaModule,
+    forwardRef(() => LiguillaModule),
   ],
   controllers: [PartidosController],
-  providers: [PartidosService],
-  exports: [PartidosService],
+  providers: [PartidosGatewayService, PartidosService],
+  exports: [PartidosGatewayService, PartidosService],
 })
 export class PartidosModule {}

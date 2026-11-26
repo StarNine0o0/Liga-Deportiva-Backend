@@ -16,10 +16,7 @@ export class Tarjeta {
   @PrimaryGeneratedColumn()
   id: number;
 
-  @ManyToOne(() => Partido)
-  partido: Relation<Partido>;
-
-  @Column()
+  @Column({ type: 'int' })//modificado para funcionar con el microservico de partidos 
   partidoId: number;
 
   @ManyToOne(() => Jugador)
